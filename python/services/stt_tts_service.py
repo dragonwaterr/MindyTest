@@ -9,7 +9,7 @@ class STT_TTSService:
     STT (Speech-to-Text) and TTS (Text-to-Speech) 기능만을 담당하는 서비스입니다.
     """
     def __init__(self):
-        # Whisper 모델 로드 (tiny)
+        # Whisper 모델 로드
         self.model = whisper.load_model("large")
         # 지원 언어 목록
         self.supported_languages = {"ko", "en", "ja", "zh", "es"}

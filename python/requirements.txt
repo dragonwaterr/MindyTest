@@ -17,3 +17,5 @@ googletrans==4.0.0-rc1
 soundfile
 librosa
 deepfilternet
+torchaudio
+demucs
