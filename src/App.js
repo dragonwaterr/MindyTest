@@ -15,8 +15,7 @@ function AppContent() {
   return (
     <>
       <nav style={{ marginBottom: '10px' }}>
-        <Link to="/">Home</Link> | <Link to="/image">Image</Link> | 
-        <button onClick={handleDenoise} style={{ marginLeft: '10px' }}>Denoise</button>
+        <Link to="/">Home</Link> | <Link to="/image">Image</Link>
       </nav>
       <Routes>
         <Route path="/" element={<Home />} />

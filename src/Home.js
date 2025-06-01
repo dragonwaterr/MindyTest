@@ -12,6 +12,8 @@ function Home() {
   const [loading, setLoading] = useState(false);
   const [isTranslating, setIsTranslating] = useState(false);
   const [cleanedAudio, setCleanedAudio] = useState(null);
+  const [originalAudioUrl, setOriginalAudioUrl] = useState(null);
+  const [denoisedAudioUrl, setDenoisedAudioUrl] = useState(null);
 
   const mediaRecorderRef = useRef(null);
   const audioChunksRef   = useRef([]);
@@ -81,9 +83,11 @@ function Home() {
                   source_lang: sourceLang
                 })
               });
-              const { recognizedText, cleanedAudio } = await sttRes.json();
+              const { recognizedText, cleanedAudio, originalFileUrl, denoisedFileUrl } = await sttRes.json();
               setRecognizedText(recognizedText);
               setCleanedAudio(cleanedAudio);
+              setOriginalAudioUrl(`${API_BASE_URL}${originalFileUrl}`);
+              setDenoisedAudioUrl(`${API_BASE_URL}${denoisedFileUrl}`);
 
               // 번역
               const trRes = await fetch(`${API_BASE_URL}/api/translate-text`, {
@@ -97,10 +101,10 @@ function Home() {
               const { translatedText } = await trRes.json();
               setTranslatedText(translatedText);
 
-              // 브라우저 TTS
-              const utter = new SpeechSynthesisUtterance(translatedText);
-              utter.lang = targetLang;
-              window.speechSynthesis.speak(utter);
+              // 브라우저 TTS는 이제 버튼을 눌러야 재생되므로 여기서 제거
+              // const utter = new SpeechSynthesisUtterance(translatedText);
+              // utter.lang = targetLang;
+              // window.speechSynthesis.speak(utter);
             } catch (err) {
               console.error(err);
               setError('음성 번역 중 오류가 발생했습니다.');
@@ -127,6 +131,7 @@ function Home() {
     }
   };
 
+  // 파일 업로드 핸들러 수정
   const handleFileUpload = (e) => {
     const file = e.target.files[0];
     if (file) {
@@ -136,7 +141,8 @@ function Home() {
         try {
           setIsTranslating(true);
           setError("");
-          // STT
+
+          // STT 및 노이즈 제거 (이제 /api/stt가 파일 저장 및 URL 반환)
           const sttRes = await fetch(`${API_BASE_URL}/api/stt`, {
             method: 'POST',
             body: new URLSearchParams({
@@ -144,9 +150,11 @@ function Home() {
               source_lang: sourceLang
             })
           });
-          const { recognizedText, cleanedAudio } = await sttRes.json();
+          const { recognizedText, cleanedAudio, originalFileUrl, denoisedFileUrl } = await sttRes.json();
           setRecognizedText(recognizedText);
-          setCleanedAudio(cleanedAudio);
+          setCleanedAudio(cleanedAudio); // Base64는 계속 받되, UI에서는 URL 사용
+          setOriginalAudioUrl(`${API_BASE_URL}${originalFileUrl}`);
+          setDenoisedAudioUrl(`${API_BASE_URL}${denoisedFileUrl}`);
 
           // 번역
           const trRes = await fetch(`${API_BASE_URL}/api/translate-text`, {
@@ -160,14 +168,14 @@ function Home() {
           const { translatedText } = await trRes.json();
           setTranslatedText(translatedText);
 
-          // 브라우저 TTS (긴 텍스트도 끝까지 읽히도록)
-          window.speechSynthesis.cancel(); // 기존 재생 중단
-          const utter = new window.SpeechSynthesisUtterance(translatedText);
-          utter.lang = targetLang;
-          utter.rate = 1;
-          utter.pitch = 1;
-          utter.volume = 1;
-          window.speechSynthesis.speak(utter);
+          // 브라우저 TTS 자동 재생 제거
+          // window.speechSynthesis.cancel();
+          // const utter = new window.SpeechSynthesisUtterance(translatedText);
+          // utter.lang = targetLang;
+          // utter.rate = 1;
+          // utter.pitch = 1;
+          // utter.volume = 1;
+          // window.speechSynthesis.speak(utter);
         } catch (err) {
           console.error(err);
           setError('파일 업로드 중 오류가 발생했습니다.');
@@ -179,11 +187,18 @@ function Home() {
     }
   };
 
-  // 노이즈 제거된 오디오 재생
-  const playCleanedAudio = () => {
-    if (cleanedAudio) {
-      const audio = new Audio(cleanedAudio);
-      audio.play();
+  // 번역 결과 재생 함수 추가
+  const playTranslatedAudio = () => {
+    if (translatedText) {
+      window.speechSynthesis.cancel();
+      const utter = new window.SpeechSynthesisUtterance(translatedText);
+      utter.lang = targetLang;
+      utter.rate = 1;
+      utter.pitch = 1;
+      utter.volume = 1;
+      window.speechSynthesis.speak(utter);
+    } else {
+      alert("번역된 텍스트가 없습니다.");
     }
   };
 
@@ -201,7 +216,7 @@ function Home() {
         </button>
         <input
           type="file"
-          accept="audio/mp3,audio/mpeg,audio/wav,audio/x-wav"
+          accept="audio/mp3,audio/mpeg,audio/wav,audio/x-wav,audio/webm"
           style={{ display: 'none' }}
           id="audio-upload"
           onChange={handleFileUpload}
@@ -248,6 +263,20 @@ function Home() {
         <div className="box">
           <h2>인식된 텍스트 ({sourceLang}):</h2>
           <textarea readOnly value={recognizedText} placeholder="STT 결과" />
+
+          {originalAudioUrl && (
+            <div style={{ marginTop: 12 }}>
+              <p>원본 음성:</p>
+              <audio controls src={originalAudioUrl}></audio>
+            </div>
+          )}
+
+          {denoisedAudioUrl && (
+            <div style={{ marginTop: 12 }}>
+              <p>노이즈 제거 음성:</p>
+              <audio controls src={denoisedAudioUrl}></audio>
+            </div>
+          )}
         </div>
         <div className="box">
           <h2>번역된 텍스트 ({targetLang}):</h2>
@@ -259,9 +288,9 @@ function Home() {
           ) : (
             <>
               <textarea readOnly value={translatedText} placeholder="번역 결과" />
-              {cleanedAudio && (
-                <button className="play-cleaned-audio" onClick={playCleanedAudio} style={{marginTop: 12}}>
-                  노이즈 제거 음성 듣기
+              {translatedText && (
+                <button className="play-translated-audio" onClick={playTranslatedAudio} style={{marginTop: 12}}>
+                  번역 결과 듣기
                 </button>
               )}
             </>

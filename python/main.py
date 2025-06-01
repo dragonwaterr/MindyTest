@@ -8,6 +8,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from tempfile import TemporaryDirectory
 from demucs.pretrained import get_model
+import base64
+import uuid
 
 from services.stt_tts_service import STT_TTSService
 from services.translation_service import TranslationService
@@ -19,7 +21,7 @@ app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=False,
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -51,11 +53,51 @@ async def clean_noise(audio_data: str = Form(...)):
         return {"error": str(e)}
 
 @app.post("/api/stt")
-async def stt(audio_data: str = Form(...), source_lang: str = Form(...)):
+async def stt(
+    audio_data: str = Form(...),
+    source_lang: str = Form(...)
+):
     try:
-        cleaned = clean_noise_from_base64(audio_data)
-        text = await stt_tts.speech_to_text(cleaned, source_lang)
-        return {"recognizedText": text, "cleanedAudio": cleaned}
+        # 파일 저장 및 URL 생성
+        unique_id = str(uuid.uuid4())
+        original_filename = f"original_{unique_id}.wav"
+        denoised_filename = f"denoised_{unique_id}.wav"
+
+        original_filepath = os.path.join(STATIC_DIR, original_filename)
+        denoised_filepath = os.path.join(STATIC_DIR, denoised_filename)
+
+        # 원본 Base64 디코딩 및 저장
+        if ',' in audio_data:
+            _, audio_b64_pure = audio_data.split(',', 1)
+        else:
+            audio_b64_pure = audio_data
+        original_audio_bytes = base64.b64decode(audio_b64_pure)
+        with open(original_filepath, "wb") as f:
+            f.write(original_audio_bytes)
+        original_file_url = f"/static/{original_filename}"
+
+        # 노이즈 제거 (cleanNoise.py의 로직 사용)
+        cleaned_b64 = clean_noise_from_base64(audio_data) # audio_data는 원본 base64, cleaned_b64는 노이즈 제거된 base64
+
+        # 노이즈 제거된 Base64 디코딩 및 저장
+        if ',' in cleaned_b64:
+            _, cleaned_b64_pure = cleaned_b64.split(',', 1)
+        else:
+            cleaned_b64_pure = cleaned_b64
+        cleaned_audio_bytes = base64.b64decode(cleaned_b64_pure)
+        with open(denoised_filepath, "wb") as f:
+            f.write(cleaned_audio_bytes)
+        denoised_file_url = f"/static/{denoised_filename}"
+
+        # STT
+        text = await stt_tts.speech_to_text(cleaned_b64, source_lang)
+        
+        return {
+            "recognizedText": text,
+            "cleanedAudio": cleaned_b64, # 기존 Base64 반환 유지
+            "originalFileUrl": original_file_url, # 추가
+            "denoisedFileUrl": denoised_file_url # 추가
+        }
     except Exception as e:
         print(f"[ERROR /api/stt] {str(e)}")
         return {"error": str(e)}
